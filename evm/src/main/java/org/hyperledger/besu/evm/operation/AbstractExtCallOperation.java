@@ -95,6 +95,11 @@ public abstract class AbstractExtCallOperation extends AbstractCallOperation {
 
   @Override
   public OperationResult execute(final MessageFrame frame, final EVM evm) {
+    Code callingCode = frame.getCode();
+    if (callingCode.getEofVersion() == 0) {
+      return InvalidOperation.INVALID_RESULT;
+    }
+
     final Bytes toBytes = frame.getStackItem(STACK_TO).trimLeadingZeros();
     final Wei value = value(frame);
     final boolean zeroValue = value.isZero();
@@ -141,7 +146,7 @@ public abstract class AbstractExtCallOperation extends AbstractCallOperation {
     frame.clearReturnData();
 
     // delegate calls to prior EOF versions are prohibited
-    if (isDelegate() && frame.getCode().getEofVersion() != code.getEofVersion()) {
+    if (isDelegate() && callingCode.getEofVersion() != code.getEofVersion()) {
       return softFailure(frame, cost);
     }
 
@@ -152,7 +157,7 @@ public abstract class AbstractExtCallOperation extends AbstractCallOperation {
     final Wei balance = (zeroValue || account == null) ? Wei.ZERO : account.getBalance();
 
     // There myst be a minimum gas for a call to have access to.
-    if (childGas < gasCalculator().getMinRetainedGas()) {
+    if (childGas < gasCalculator().getMinCalleeGas()) {
       return softFailure(frame, cost);
     }
     // transferring value you don't have is not a halting exception, just a failure
@@ -180,7 +185,6 @@ public abstract class AbstractExtCallOperation extends AbstractCallOperation {
         .code(code)
         .isStatic(isStatic(frame))
         .completer(child -> complete(frame, child))
-        .authorizedCodeService(frame.getAuthorizedCodeService())
         .build();
 
     frame.setState(MessageFrame.State.CODE_SUSPENDED);
